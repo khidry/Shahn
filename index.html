@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام إدارة المبيعات والأرصدة - الاحترافي</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.prod.js"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        body { font-family: system-ui, -apple-system, sans-serif; background-color: #f8fafc; }
+        .modal-overlay { background-color: rgba(15, 23, 42, 0.75); backdrop-filter: blur(4px); }
+        [v-cloak] { display: none; }
+        /* تصميم للضغط على العناصر */
+        .clickable-name { cursor: pointer; transition: all 0.2s; border-bottom: 2px dashed #93c5fd; padding-bottom: 2px; }
+        .clickable-name:hover { color: #2563eb; background-color: #eff6ff; border-radius: 4px; padding: 2px 4px; }
+    </style>
+</head>
+<body class="pb-20">
+
+<!-- شاشة التحميل -->
+<div id="loading" class="fixed inset-0 flex items-center justify-center bg-slate-50 z-[100]">
+    <div class="text-center">
+        <i class="fas fa-circle-notch fa-spin text-5xl text-blue-600 mb-4"></i>
+        <div class="text-xl font-bold text-gray-700" id="loading-text">جاري تهيئة النظام...</div>
+    </div>
+</div>
+
+<div id="app" class="max-w-7xl mx-auto p-2 md:p-4 space-y-4" v-cloak>
+
+    <!-- الهيدر العلوي -->
+    <div class="bg-white p-4 rounded-xl shadow-md border-t-4 border-blue-600 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-30">
+        <div class="flex gap-4 w-full md:w-auto">
+            <div v-for="branch in branches" :key="branch" class="flex flex-col items-center flex-1 md:flex-none">
+                <button @click="currentBranch = branch"
+                    :class="currentBranch === branch ? 'bg-blue-600 text-white shadow-lg scale-105' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                    class="w-full px-8 py-2 rounded-lg font-bold text-lg transition-all">
+                    فرع {{ branch }}
+                </button>
+                <div v-if="currentBranch === branch" class="mt-1 text-sm font-bold text-green-700 bg-green-50 px-3 py-1 rounded-full border border-green-200 w-full text-center shadow-inner" dir="ltr">
+                    صافي الربح: {{ calculateBranchProfit(branch) }}
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-3 w-full md:w-auto justify-between">
+            <div class="flex items-center gap-2 bg-gray-50 px-4 py-2 rounded-lg border flex-1">
+                <label class="font-bold text-gray-700 whitespace-nowrap"><i class="far fa-calendar-alt ml-1"></i> اليومية:</label>
+                <input type="date" v-model="currentDate" class="bg-transparent font-bold text-blue-700 outline-none cursor-pointer w-full text-center">
+            </div>
+            <button @click="showSettings = true" class="bg-slate-700 hover:bg-slate-800 text-white p-3 rounded-lg shadow transition-colors">
+                <i class="fas fa-cog text-xl"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- نافذة الإعدادات -->
+    <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4">
+        <div class="bg-white w-full max-w-6xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold"><i class="fas fa-tools ml-2"></i> إعدادات فرع {{ currentBranch }}</h2>
+                <button @click="showSettings = false" class="text-gray-300 hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-8 flex-1">
+                <!-- إعدادات العناصر وإعادة الترتيب -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <!-- الماكينات -->
+                    <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                        <h3 class="font-bold text-lg mb-3 text-blue-800">الماكينات / اليوزرات</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input v-model="newMachine" @keyup.enter="addMachine" placeholder="اسم..." class="border p-2 rounded flex-1 outline-none text-sm">
+                            <button @click="addMachine" class="bg-blue-600 text-white px-3 rounded font-bold">+</button>
+                        </div>
+                        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div v-for="(col, idx) in columns" :key="'col'+col" class="flex justify-between items-center bg-white p-2 rounded border border-blue-200 text-sm shadow-sm">
+                                <span class="font-bold text-gray-700">{{ col }}</span>
+                                <div class="flex gap-1">
+                                    <button @click="moveItem(columns, idx, -1)" :disabled="idx===0" class="text-gray-400 hover:text-blue-600 disabled:opacity-30"><i class="fas fa-chevron-up"></i></button>
+                                    <button @click="moveItem(columns, idx, 1)" :disabled="idx===columns.length-1" class="text-gray-400 hover:text-blue-600 disabled:opacity-30"><i class="fas fa-chevron-down"></i></button>
+                                    <button @click="removeMachine(col)" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- الموظفين -->
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <h3 class="font-bold text-lg mb-3 text-indigo-800">الموظفين</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input v-model="newEmployee" @keyup.enter="addEmployee" placeholder="اسم..." class="border p-2 rounded flex-1 outline-none text-sm">
+                            <button @click="addEmployee" class="bg-indigo-600 text-white px-3 rounded font-bold">+</button>
+                        </div>
+                        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div v-for="(emp, idx) in employees" :key="'emp'+emp" class="flex justify-between items-center bg-white p-2 rounded border border-indigo-200 text-sm shadow-sm">
+                                <span class="font-bold text-gray-700">{{ emp }}</span>
+                                <div class="flex gap-1">
+                                    <button @click="moveItem(employees, idx, -1)" :disabled="idx===0" class="text-gray-400 hover:text-indigo-600 disabled:opacity-30"><i class="fas fa-chevron-up"></i></button>
+                                    <button @click="moveItem(employees, idx, 1)" :disabled="idx===employees.length-1" class="text-gray-400 hover:text-indigo-600 disabled:opacity-30"><i class="fas fa-chevron-down"></i></button>
+                                    <button @click="removeEmployee(emp)" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- الحسابات -->
+                    <div class="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                        <h3 class="font-bold text-lg mb-3 text-purple-800">العملاء / الموردين</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input v-model="newAccount" @keyup.enter="addAccount" placeholder="اسم..." class="border p-2 rounded flex-1 outline-none text-sm">
+                            <button @click="addAccount" class="bg-purple-600 text-white px-3 rounded font-bold">+</button>
+                        </div>
+                        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div v-for="(acc, idx) in accounts" :key="'acc'+acc" class="flex justify-between items-center bg-white p-2 rounded border border-purple-200 text-sm shadow-sm">
+                                <span class="font-bold text-gray-700">{{ acc }}</span>
+                                <div class="flex gap-1">
+                                    <button @click="moveItem(accounts, idx, -1)" :disabled="idx===0" class="text-gray-400 hover:text-purple-600 disabled:opacity-30"><i class="fas fa-chevron-up"></i></button>
+                                    <button @click="moveItem(accounts, idx, 1)" :disabled="idx===accounts.length-1" class="text-gray-400 hover:text-purple-600 disabled:opacity-30"><i class="fas fa-chevron-down"></i></button>
+                                    <button @click="removeAccount(acc)" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بنود الإيرادات والمصروفات -->
+                    <div class="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                        <h3 class="font-bold text-lg mb-3 text-orange-800">بنود مصروف/إيراد</h3>
+                        <div class="flex gap-2 mb-3">
+                            <input v-model="newCategory" @keyup.enter="addCategory" placeholder="اسم البند..." class="border p-2 rounded flex-1 outline-none text-sm">
+                            <button @click="addCategory" class="bg-orange-600 text-white px-3 rounded font-bold">+</button>
+                        </div>
+                        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
+                            <div v-for="(cat, idx) in categories" :key="'cat'+cat" class="flex justify-between items-center bg-white p-2 rounded border border-orange-200 text-sm shadow-sm">
+                                <span class="font-bold text-gray-700">{{ cat }}</span>
+                                <div class="flex gap-1">
+                                    <button @click="moveItem(categories, idx, -1)" :disabled="idx===0" class="text-gray-400 hover:text-orange-600 disabled:opacity-30"><i class="fas fa-chevron-up"></i></button>
+                                    <button @click="moveItem(categories, idx, 1)" :disabled="idx===categories.length-1" class="text-gray-400 hover:text-orange-600 disabled:opacity-30"><i class="fas fa-chevron-down"></i></button>
+                                    <button @click="removeCategory(cat)" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- قيد أول المدة -->
+                <div class="bg-yellow-50 p-5 rounded-xl border border-yellow-200">
+                    <h3 class="font-bold text-xl mb-4 text-yellow-800 border-b border-yellow-200 pb-2">سند قيد أول المدة</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-2">الصندوق الافتتاحي</label>
+                            <input type="number" v-model.number="currentBranchData.openingBalances.box" class="w-full border-2 border-yellow-400 p-2 rounded font-bold text-lg outline-none text-center" dir="ltr">
+                        </div>
+                        <div class="col-span-1 lg:col-span-2">
+                            <label class="block font-bold text-gray-700 mb-2">أرصدة الماكينات الافتتاحية</label>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div v-for="col in columns" :key="'ob-m-'+col" class="flex items-center bg-white border rounded shadow-sm">
+                                    <span class="bg-gray-100 px-2 py-1 text-xs font-bold w-20 text-center border-l truncate">{{ col }}</span>
+                                    <input type="number" v-model.number="currentBranchData.openingBalances.machines[col]" class="w-full p-1 text-center outline-none font-bold text-blue-700">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-span-1 md:col-span-2 lg:col-span-3 mt-2">
+                            <label class="block font-bold text-gray-700 mb-2">أرصدة الحسابات الافتتاحية (الآجل فقط)</label>
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                <div v-for="acc in [...employees, ...accounts]" :key="'ob-a-'+acc" class="bg-white border rounded p-2 flex flex-col gap-1 shadow-sm">
+                                    <span class="text-xs font-bold text-gray-600 truncate">{{ acc }}</span>
+                                    <input type="number" v-model.number="currentBranchData.openingBalances.accounts[acc]" dir="ltr" class="w-full p-1 text-center border-b outline-none font-bold bg-gray-50">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="bg-gray-100 p-4 border-t flex justify-between items-center">
+                <button @click="resetApp" class="text-red-600 font-bold text-sm hover:underline"><i class="fas fa-exclamation-triangle"></i> مسح كامل للنظام</button>
+                <button @click="showSettings = false; ensureDayDataSchema();" class="bg-green-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg hover:bg-green-700 transition">حفظ وإغلاق</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة دفتر الأستاذ (Ledger Modal) -->
+    <div v-if="showLedger" class="fixed inset-0 z-[60] flex items-center justify-center modal-overlay p-4">
+        <div class="bg-white w-full max-w-4xl max-h-[85vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-slate-800 text-white p-4 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold inline-block mr-2"><i class="fas fa-book-open text-blue-400"></i> دفتر الأستاذ: </h2>
+                    <span class="text-2xl font-black text-yellow-400">{{ ledgerTarget }}</span>
+                </div>
+                <button @click="showLedger = false" class="text-gray-300 hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-4 overflow-y-auto flex-1 bg-slate-50">
+                <table class="w-full text-center border-collapse bg-white shadow-sm rounded-lg overflow-hidden">
+                    <thead class="bg-slate-200 text-slate-700 sticky top-0">
+                        <tr v-if="ledgerType === 'machine'">
+                            <th class="p-3 border">التاريخ</th><th class="p-3 border">شحن (+)</th><th class="p-3 border">مبيع (-)</th><th class="p-3 border">التكلفة</th><th class="p-3 border">الشرائح</th><th class="p-3 border">رصيد آخر</th>
+                        </tr>
+                        <tr v-else-if="ledgerType === 'account' || ledgerType === 'employee'">
+                            <th class="p-3 border">التاريخ</th><th class="p-3 border text-green-600">بيع آجل عليه (+)</th><th class="p-3 border text-red-600">شراء آجل له (-)</th><th class="p-3 border text-green-700">دفع لنا (-)</th><th class="p-3 border text-red-700">صرفنا له (+)</th><th class="p-3 border font-black">الرصيد (عليه)</th>
+                        </tr>
+                        <tr v-else-if="ledgerType === 'category'">
+                            <th class="p-3 border">التاريخ</th><th class="p-3 border text-green-600">إيراد بالصندوق (+)</th><th class="p-3 border text-red-600">مصروف من الصندوق (-)</th><th class="p-3 border font-black">الصافي</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(row, i) in ledgerData" :key="i" class="border-b hover:bg-blue-50 transition-colors">
+                            <td class="p-3 border font-bold text-slate-700" :class="{'bg-yellow-100': row.isOpening}">{{ row.date }}</td>
+                            
+                            <template v-if="ledgerType === 'machine'">
+                                <td class="p-3 border font-semibold text-red-600">{{ row.buy || '-' }}</td>
+                                <td class="p-3 border font-semibold text-green-600">{{ row.sell || '-' }}</td>
+                                <td class="p-3 border font-bold text-gray-700" dir="ltr">{{ row.cost }}</td>
+                                <td class="p-3 border">{{ row.sims || '-' }}</td>
+                                <td class="p-3 border font-black text-blue-700">{{ row.end || '-' }}</td>
+                            </template>
+
+                            <template v-else-if="ledgerType === 'account' || ledgerType === 'employee'">
+                                <td class="p-3 border font-semibold text-green-600">{{ row.credit || '-' }}</td>
+                                <td class="p-3 border font-semibold text-red-600">{{ row.debit || '-' }}</td>
+                                <td class="p-3 border font-semibold text-green-700">{{ row.flowIn || '-' }}</td>
+                                <td class="p-3 border font-semibold text-red-700">{{ row.flowOut || '-' }}</td>
+                                <td class="p-3 border font-black text-lg" dir="ltr" :class="row.balance > 0 ? 'text-green-600' : (row.balance < 0 ? 'text-red-600' : 'text-gray-500')">{{ row.balance }}</td>
+                            </template>
+
+                            <template v-else-if="ledgerType === 'category'">
+                                <td class="p-3 border font-semibold text-green-600">{{ row.flowIn || '-' }}</td>
+                                <td class="p-3 border font-semibold text-red-600">{{ row.flowOut || '-' }}</td>
+                                <td class="p-3 border font-black text-lg" dir="ltr" :class="row.balance > 0 ? 'text-green-600' : (row.balance < 0 ? 'text-red-600' : 'text-gray-500')">{{ row.balance }}</td>
+                            </template>
+                        </tr>
+                        <tr v-if="ledgerData.length === 0">
+                            <td colspan="6" class="p-6 text-gray-400">لا توجد حركات مسجلة.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- الواجهة الرئيسية اليومية -->
+    <div v-if="dayData" class="space-y-6">
+
+        <!-- القسم الأول: جدول الماكينات العمودي الجديد -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+            <div class="bg-slate-50 p-4 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold text-slate-800"><i class="fas fa-sim-card ml-2 text-blue-500"></i> حركة الماكينات واليوزرات (أفقي/عمودي)</h2>
+                <span class="text-xs font-semibold text-gray-500 bg-white px-2 py-1 rounded border shadow-sm">اضغط على اسم الماكينة لفتح الدفتر</span>
+            </div>
+            <div class="overflow-x-auto p-0">
+                <table class="w-full text-center border-collapse text-sm md:text-base">
+                    <thead class="bg-yellow-100 border-b-2 border-yellow-300">
+                        <tr>
+                            <th class="p-3 border w-32 font-bold text-slate-800">الماكينة/اليوزر</th>
+                            <th class="p-3 border font-bold text-red-800 bg-red-50">شحن (شراء)</th>
+                            <th class="p-3 border font-bold text-green-800 bg-green-50">المبيع</th>
+                            <th class="p-3 border font-bold text-blue-900 bg-blue-50">رصيد آخر اليوم</th>
+                            <th class="p-3 border font-bold text-gray-700">التكلفة</th>
+                            <th class="p-3 border font-bold text-orange-800 bg-orange-50">الشرائح</th>
+                            <th class="p-3 border font-bold text-indigo-800">شرائح الشهر</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="col in columns" :key="'tr'+col" class="border-b hover:bg-slate-50 transition-colors">
+                            <!-- اسم الماكينة قابل للضغط -->
+                            <td class="p-2 border font-bold text-slate-700 bg-slate-50" @click="openLedger('machine', col)">
+                                <span class="clickable-name" title="عرض دفتر الماكينة"><i class="fas fa-link text-blue-300 text-xs ml-1"></i> {{ col }}</span>
+                            </td>
+                            
+                            <td class="p-1 border bg-red-50/30"><input type="number" v-model.number="dayData.machines[col].buy" class="w-full p-2 text-center rounded outline-none bg-transparent focus:bg-white focus:ring-2 ring-red-200 font-bold text-red-700"></td>
+                            <td class="p-1 border bg-green-50/30"><input type="number" v-model.number="dayData.machines[col].sell" class="w-full p-2 text-center rounded outline-none bg-transparent focus:bg-white focus:ring-2 ring-green-200 font-bold text-green-700"></td>
+                            <td class="p-1 border bg-blue-50/50"><input type="number" v-model.number="dayData.machines[col].end" class="w-full p-2 text-center rounded outline-none bg-transparent focus:bg-white focus:ring-2 ring-blue-300 font-black text-lg text-blue-800"></td>
+                            
+                            <td class="p-2 border font-bold text-gray-700 bg-gray-50" dir="ltr">{{ calculateCost(col) }}</td>
+                            
+                            <td class="p-1 border bg-orange-50/30"><input type="number" v-model.number="dayData.machines[col].sims" class="w-full p-2 text-center rounded outline-none bg-transparent focus:bg-white focus:ring-2 ring-orange-200 font-bold text-orange-700"></td>
+                            <td class="p-2 border font-black text-indigo-700 bg-indigo-50/30">{{ getMonthlyMachineSims(col) }}</td>
+                        </tr>
+                    </tbody>
+                    <tfoot class="bg-slate-800 text-white font-bold">
+                        <tr>
+                            <td class="p-3 border text-left">الإجمالي:</td>
+                            <td class="p-3 border text-lg text-red-300" dir="ltr">{{ -totalBuyPayment }}</td>
+                            <td class="p-3 border text-lg text-green-300" dir="ltr">{{ totalSellPayment }}</td>
+                            <td class="p-3 border text-xl text-blue-300" dir="ltr">{{ totalEndOfDay }}</td>
+                            <td class="p-3 border text-lg text-gray-300" dir="ltr">{{ totalCost }}</td>
+                            <td class="p-3 border"></td>
+                            <td class="p-3 border"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- حركة الصندوق -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 flex flex-col">
+                <div class="bg-slate-50 p-4 border-b flex justify-between items-center">
+                    <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-money-bill-wave ml-2 text-green-600"></i> الصندوق (صادر / وارد)</h2>
+                </div>
+                <div class="p-4 flex-1">
+                    <table class="w-full text-center text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 border">
+                                <th class="p-2 border w-24">النوع</th><th class="p-2 border w-28">المبلغ</th><th class="p-2 border w-40">الحساب/البند</th><th class="p-2 border">البيان</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(item, idx) in dayData.cashflow" :key="'cf'+idx" class="border hover:bg-gray-50">
+                                <td class="border p-0">
+                                    <select v-model="item.type" class="w-full bg-transparent outline-none p-2 font-bold cursor-pointer" :class="item.type==='in' ? 'text-green-600' : 'text-red-600'">
+                                        <option value="in">وارد (+)</option>
+                                        <option value="out">صادر (-)</option>
+                                    </select>
+                                </td>
+                                <td class="border p-0"><input type="number" v-model.number="item.amount" class="w-full p-2 text-center outline-none bg-transparent font-bold"></td>
+                                <td class="border p-0 relative">
+                                    <input type="text" list="all-accounts-list" v-model="item.account" placeholder="اختر..." class="w-full p-2 text-center outline-none bg-transparent font-semibold text-blue-700">
+                                </td>
+                                <td class="border p-0"><input type="text" v-model="item.note" placeholder="..." class="w-full p-2 outline-none bg-transparent"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <datalist id="all-accounts-list">
+                        <option v-for="acc in allAccountsList" :key="'dl-'+acc" :value="acc"></option>
+                    </datalist>
+                    <div class="mt-4 p-3 bg-gray-50 border rounded-lg flex justify-between items-center font-bold shadow-inner">
+                        <span class="text-gray-700">صافي الحركة:</span>
+                        <span dir="ltr" class="text-xl" :class="netCashflow >= 0 ? 'text-green-600' : 'text-red-600'">
+                            {{ netCashflow > 0 ? '+' : '' }}{{ netCashflow }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- أداء الموظفين -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200 flex flex-col">
+                <div class="bg-slate-50 p-4 border-b">
+                    <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-users ml-2 text-indigo-500"></i> أداء الموظفين (الشرائح)</h2>
+                </div>
+                <div class="p-4 flex-1">
+                    <table class="w-full text-center text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-gray-100 border">
+                                <th class="p-2 border">الموظف</th><th class="p-2 border text-blue-700">شرائح اليوم</th><th class="p-2 border text-green-700">إجمالي الشهر</th><th class="p-2 border text-orange-600">عمولة (×5)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="emp in employees" :key="'tbl-e'+emp" class="border hover:bg-gray-50">
+                                <td class="p-2 border font-bold text-slate-700 bg-slate-50" @click="openLedger('employee', emp)">
+                                    <span class="clickable-name"><i class="fas fa-link text-blue-300 text-xs ml-1"></i> {{ emp }}</span>
+                                </td>
+                                <td class="border p-0 bg-blue-50/50"><input type="number" v-model.number="dayData.employeeSims[emp]" class="w-full p-2 text-center outline-none bg-transparent font-bold text-blue-700"></td>
+                                <td class="border p-2 font-bold text-green-700 text-lg">{{ getMonthlyEmpSims(emp) }}</td>
+                                <td class="border p-2 font-black text-orange-600 text-lg">{{ getMonthlyEmpSims(emp) * 5 }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- دفتر حسابات الآجل الموحد -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+                <div class="bg-slate-50 p-4 border-b">
+                    <h2 class="text-lg font-bold text-slate-800"><i class="fas fa-book ml-2 text-purple-600"></i> حسابات الآجل (موردين/عملاء/موظفين)</h2>
+                </div>
+                <div class="overflow-x-auto p-4 max-h-[400px] overflow-y-auto relative">
+                    <table class="w-full text-center text-sm border-collapse min-w-[700px]">
+                        <thead class="sticky top-0 bg-gray-100 shadow-sm z-10">
+                            <tr class="border">
+                                <th class="p-3 border">الحساب</th>
+                                <th class="p-3 border text-red-600 text-xs">شراء آجل له (-)</th>
+                                <th class="p-3 border text-green-600 text-xs">بيع آجل عليه (+)</th>
+                                <th class="p-3 border text-blue-600 text-xs bg-blue-50">تأثير الصندوق</th>
+                                <th class="p-3 border font-bold text-base">الرصيد النهائي</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="acc in [...accounts, ...employees]" :key="'tbl-a'+acc" class="border hover:bg-gray-50">
+                                <td class="p-2 border font-bold text-slate-700 whitespace-nowrap bg-slate-50" @click="openLedger('account', acc)">
+                                    <span class="clickable-name"><i class="fas fa-link text-blue-300 text-xs ml-1"></i> {{ acc }}</span>
+                                </td>
+                                <td class="border p-0 bg-red-50/50"><input type="number" v-model.number="dayData.accountsData[acc].debit" placeholder="0" class="w-full p-3 text-center outline-none bg-transparent text-red-700 font-bold"></td>
+                                <td class="border p-0 bg-green-50/50"><input type="number" v-model.number="dayData.accountsData[acc].credit" placeholder="0" class="w-full p-3 text-center outline-none bg-transparent text-green-700 font-bold"></td>
+                                <td class="border p-2 font-semibold bg-blue-50/30" :class="getAccountCashflowToday(acc) > 0 ? 'text-green-700' : (getAccountCashflowToday(acc) < 0 ? 'text-red-700' : 'text-gray-400')" dir="ltr">{{ getAccountCashflowToday(acc) > 0 ? '+' : '' }}{{ getAccountCashflowToday(acc) }}</td>
+                                <td class="border p-2 font-black text-lg bg-gray-50" dir="ltr" :class="calculateCurrentAccountBalance(acc) > 0 ? 'text-green-600' : (calculateCurrentAccountBalance(acc) < 0 ? 'text-red-600' : 'text-gray-700')">{{ calculateCurrentAccountBalance(acc) }}</td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="bg-slate-800 text-white font-bold sticky bottom-0 z-10">
+                            <tr>
+                                <td colspan="4" class="p-3 text-left">إجمالي صافي حسابات الآجل:</td>
+                                <td class="p-3 text-xl" dir="ltr" :class="totalNetAccounts > 0 ? 'text-green-400' : (totalNetAccounts < 0 ? 'text-red-400' : 'text-white')">{{ totalNetAccounts }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            <!-- سجل المصروفات والإيرادات (مستقل) -->
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-orange-200">
+                <div class="bg-orange-50 p-4 border-b">
+                    <h2 class="text-lg font-bold text-orange-900"><i class="fas fa-file-invoice-dollar ml-2 text-orange-600"></i> المصروفات والإيرادات المتنوعة</h2>
+                    <p class="text-xs text-orange-700 mt-1">تؤثر على الصندوق مباشرة ولا تدخل في حسابات الآجل</p>
+                </div>
+                <div class="overflow-x-auto p-4 max-h-[400px] overflow-y-auto">
+                    <table class="w-full text-center text-sm border-collapse">
+                        <thead class="bg-orange-100 shadow-sm sticky top-0">
+                            <tr>
+                                <th class="p-3 border text-orange-900">البند</th>
+                                <th class="p-3 border text-green-700">وارد اليوم (+)</th>
+                                <th class="p-3 border text-red-700">منصرف اليوم (-)</th>
+                                <th class="p-3 border font-bold text-orange-900">صافي الشهر</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="cat in categories" :key="'cat-tbl'+cat" class="border hover:bg-orange-50/50">
+                                <td class="p-2 border font-bold text-slate-700 whitespace-nowrap bg-slate-50" @click="openLedger('category', cat)">
+                                    <span class="clickable-name"><i class="fas fa-link text-blue-300 text-xs ml-1"></i> {{ cat }}</span>
+                                </td>
+                                <td class="border p-2 font-bold text-green-600">{{ getCategoryCashflow(cat, currentDate).flowIn || '-' }}</td>
+                                <td class="border p-2 font-bold text-red-600">{{ getCategoryCashflow(cat, currentDate).flowOut || '-' }}</td>
+                                <td class="border p-2 font-black text-lg bg-orange-50" dir="ltr" :class="getCategoryMonthlyTotal(cat) > 0 ? 'text-green-600' : (getCategoryMonthlyTotal(cat) < 0 ? 'text-red-600' : 'text-gray-600')">{{ getCategoryMonthlyTotal(cat) }}</td>
+                            </tr>
+                            <tr v-if="categories.length === 0"><td colspan="4" class="p-6 text-gray-400">لا توجد بنود. أضفها من الإعدادات.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- ملخص الصندوق -->
+        <div class="bg-slate-800 text-white p-6 rounded-xl shadow-lg flex flex-col md:flex-row justify-around items-center gap-6 border-b-8" :class="boxDifference === 0 ? 'border-green-500' : 'border-red-500'">
+            <div class="flex items-center flex-wrap justify-center gap-4 md:gap-8 text-center">
+                <div>
+                    <div class="text-slate-400 text-sm font-semibold mb-1">صندوق سابق</div>
+                    <div class="font-bold text-2xl text-yellow-400" dir="ltr">{{ boxStartBalance }}</div>
+                </div>
+                <div class="text-3xl text-slate-500 font-light">+</div>
+                <div>
+                    <div class="text-slate-400 text-sm font-semibold mb-1">صافي حركة اليوم</div>
+                    <div class="font-bold text-lg text-blue-300" dir="ltr">{{ theoreticalBox - boxStartBalance }}</div>
+                </div>
+                <div class="text-3xl text-slate-500 font-light">=</div>
+                <div class="bg-slate-700 px-6 py-2 rounded-lg shadow-inner border border-slate-600">
+                    <div class="text-slate-300 text-sm font-semibold mb-1">الرصيد الدفتري</div>
+                    <div class="font-bold text-2xl text-white" dir="ltr">{{ theoreticalBox }}</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 bg-slate-900 p-4 rounded-xl border border-slate-700 w-full md:w-auto justify-center shadow-inner">
+                <div class="text-center">
+                    <div class="text-slate-300 text-sm font-semibold mb-2">الرصيد الفعلي بالدرج</div>
+                    <input type="number" v-model.number="dayData.boxActual" class="w-32 text-center text-slate-900 font-black text-3xl p-2 rounded-lg outline-none focus:ring-4 focus:ring-blue-500" dir="ltr" placeholder="0">
+                </div>
+                <div class="w-px h-16 bg-slate-700 mx-2"></div>
+                <div class="text-center min-w-[100px]">
+                    <div class="text-slate-300 text-sm font-semibold mb-1">حالة الجرد</div>
+                    <div class="font-bold text-3xl transition-colors" :class="boxDifference < 0 ? 'text-red-500' : (boxDifference > 0 ? 'text-green-500' : 'text-green-400')" dir="ltr">
+                        {{ boxDifference > 0 ? '+' : '' }}{{ boxDifference }}
+                    </div>
+                    <div class="text-xs font-bold mt-1" :class="boxDifference < 0 ? 'text-red-500 bg-red-100' : (boxDifference > 0 ? 'text-green-600 bg-green-100' : 'text-green-500 bg-green-50')" style="padding: 2px 6px; border-radius: 4px;">
+                        {{ boxDifference < 0 ? 'عجز' : (boxDifference > 0 ? 'زيادة' : 'مطابق') }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+window.addEventListener('error', function(e) { const l = document.getElementById('loading-text'); if(l) l.innerHTML = `<span class="text-red-600">حدث خطأ. تأكد من متصفحك وامسح الكاش.</span>`; });
+
+try {
+    const { createApp, ref, computed, watch, onMounted } = Vue;
+
+    createApp({
+        setup() {
+            const branches = ['هواتف', 'هواوي'];
+            const currentBranch = ref('هواتف');
+            const showSettings = ref(false);
+            const branchCapital = { 'هواتف': 35000, 'هواوي': 15000 };
+
+            const newMachine = ref('');
+            const newEmployee = ref('');
+            const newAccount = ref('');
+            const newCategory = ref('');
+
+            const getLocalDate = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().split('T')[0]; };
+            const currentDate = ref(getLocalDate());
+
+            const createDefaultBranchState = (cols) => ({
+                columns: cols,
+                employees: [],
+                accounts: ['مورد عام', 'عميل عام'],
+                categories: ['مصروفات متنوعة', 'إيرادات متنوعة'],
+                openingBalances: { box: 0, machines: {}, accounts: {} },
+                days: {}
+            });
+
+            const defaultState = {
+                'هواتف': createDefaultBranchState(['مسار', 'سوا', 'موبايلي', 'فريندي', 'سلام', 'ريدبول', 'زين']),
+                'هواوي': createDefaultBranchState(['مسار', 'سوا', 'موبايلي'])
+            };
+
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem('pos_erp_db_v6')); } catch(e) {}
+            const db = ref(saved || defaultState);
+
+            const currentBranchData = computed(() => db.value[currentBranch.value]);
+            const columns = computed(() => currentBranchData.value.columns || []);
+            const employees = computed(() => currentBranchData.value.employees || []);
+            const accounts = computed(() => currentBranchData.value.accounts || []);
+            const categories = computed(() => currentBranchData.value.categories || []);
+            
+            // القائمة الموحدة للصندوق (تشمل كل شيء)
+            const allAccountsList = computed(() => [...employees.value, ...accounts.value, ...categories.value]);
+            // قائمة حسابات الآجل فقط للميزانية
+            const deferredAccountsList = computed(() => [...employees.value, ...accounts.value]);
+            
+            const dayData = computed(() => currentBranchData.value.days[currentDate.value]);
+
+            const ensureDayDataSchema = () => {
+                const b = currentBranchData.value;
+                if (!b.categories) b.categories = ['مصروفات متنوعة', 'إيرادات متنوعة']; // Migration failsafe
+                
+                if (!b.days[currentDate.value]) {
+                    b.days[currentDate.value] = { machines: {}, cashflow: [{ type: 'out', amount: '', account: '', note: '' }], employeeSims: {}, accountsData: {}, boxActual: "" };
+                }
+                const day = b.days[currentDate.value];
+                
+                b.columns.forEach(col => { if (!day.machines[col]) day.machines[col] = { buy: "", end: "", sell: "", sims: "" }; });
+                b.employees.forEach(emp => { if (day.employeeSims[emp] === undefined) day.employeeSims[emp] = ""; });
+                deferredAccountsList.value.forEach(acc => { if (!day.accountsData[acc]) day.accountsData[acc] = { debit: "", credit: "" }; });
+                
+                ensureEmptyCashflowRow();
+            };
+
+            watch([currentBranch, currentDate], () => { ensureDayDataSchema(); }, { immediate: true });
+            watch(db, (newVal) => { try { localStorage.setItem('pos_erp_db_v6', JSON.stringify(newVal)); } catch(e){} }, { deep: true });
+
+            const ensureEmptyCashflowRow = () => {
+                if (!dayData.value) return;
+                if (!dayData.value.cashflow) dayData.value.cashflow = [];
+                const flow = dayData.value.cashflow;
+                if (flow.length === 0 || (flow[flow.length - 1].amount !== '' || flow[flow.length - 1].account !== '' || flow[flow.length - 1].note !== '')) {
+                    flow.push({ type: 'out', amount: '', account: '', note: '' });
+                }
+            };
+            watch(() => dayData.value?.cashflow, ensureEmptyCashflowRow, { deep: true });
+
+            // محرك الحسابات الموحد (لا يجمع ال categories كأرصدة أصول، بل يؤثر فقط على الصندوق)
+            const getBranchState = (branchName, targetDate) => {
+                const b = db.value[branchName];
+                if (!b) return { box: 0, machinesEnd: 0, accountsNet: 0, accountsMap: {} };
+                const defAccs = [...(b.employees||[]), ...(b.accounts||[])];
+                const dates = Object.keys(b.days).sort().filter(d => d <= targetDate);
+                
+                let box = parseFloat(b.openingBalances?.box) || 0;
+                let machinesEnd = 0;
+                let accountsNet = 0;
+                let accountsMap = {};
+                
+                defAccs.forEach(acc => { accountsMap[acc] = parseFloat(b.openingBalances?.accounts?.[acc]) || 0; });
+
+                dates.forEach((d) => {
+                    const day = b.days[d];
+                    let sell = 0, buy = 0;
+                    (b.columns || []).forEach(col => { sell += (parseFloat(day.machines[col]?.sell) || 0); buy += (parseFloat(day.machines[col]?.buy) || 0); });
+                    
+                    let cf = 0;
+                    (day.cashflow || []).forEach(item => { cf += (item.type === 'in' ? (parseFloat(item.amount)||0) : -(parseFloat(item.amount)||0)); });
+                    
+                    box += sell - buy + cf; 
+                    if (day.boxActual !== "" && day.boxActual !== null && day.boxActual !== undefined) box = parseFloat(day.boxActual);
+
+                    defAccs.forEach(acc => {
+                        if (day.accountsData?.[acc]) accountsMap[acc] += (parseFloat(day.accountsData[acc].credit) || 0) - (parseFloat(day.accountsData[acc].debit) || 0);
+                        (day.cashflow || []).forEach(item => {
+                            if (item.account === acc) accountsMap[acc] += (item.type === 'in' ? -(parseFloat(item.amount)||0) : parseFloat(item.amount)||0);
+                        });
+                    });
+
+                    if (d === targetDate) { (b.columns || []).forEach(col => { machinesEnd += (parseFloat(day.machines[col]?.end) || 0); }); }
+                });
+                
+                defAccs.forEach(acc => accountsNet += accountsMap[acc]);
+                return { box, machinesEnd, accountsNet, accountsMap };
+            };
+
+            const prevDate = computed(() => {
+                const sorted = Object.keys(currentBranchData.value.days).sort().filter(d => d < currentDate.value);
+                return sorted.length > 0 ? sorted[sorted.length - 1] : null;
+            });
+
+            const boxStartBalance = computed(() => {
+                if (!prevDate.value) return parseFloat(currentBranchData.value.openingBalances?.box) || 0;
+                return getBranchState(currentBranch.value, prevDate.value).box;
+            });
+
+            const totalBuyPayment = computed(() => columns.value.reduce((sum, col) => sum + (parseFloat(dayData.value?.machines[col]?.buy) || 0), 0) * -1);
+            const totalSellPayment = computed(() => columns.value.reduce((sum, col) => sum + (parseFloat(dayData.value?.machines[col]?.sell) || 0), 0));
+            const totalEndOfDay = computed(() => columns.value.reduce((sum, col) => sum + (parseFloat(dayData.value?.machines[col]?.end) || 0), 0));
+            
+            const getMachineStartBalance = (col) => {
+                if (!prevDate.value) return parseFloat(currentBranchData.value.openingBalances?.machines?.[col]) || 0;
+                return parseFloat(currentBranchData.value.days[prevDate.value].machines[col]?.end) || 0;
+            };
+
+            const calculateCost = (col) => {
+                const m = dayData.value?.machines[col]; if (!m) return 0;
+                return getMachineStartBalance(col) + (parseFloat(m.buy) || 0) - (parseFloat(m.end) || 0);
+            };
+
+            const totalCost = computed(() => columns.value.reduce((sum, col) => sum + calculateCost(col), 0));
+
+            const netCashflow = computed(() => {
+                return (dayData.value?.cashflow || []).reduce((sum, item) => sum + (item.type === 'in' ? (parseFloat(item.amount) || 0) : -(parseFloat(item.amount) || 0)), 0);
+            });
+
+            const theoreticalBox = computed(() => boxStartBalance.value + totalSellPayment.value + totalBuyPayment.value + netCashflow.value);
+            const boxDifference = computed(() => (dayData.value?.boxActual || 0) - theoreticalBox.value);
+
+            const getAccountCashflowToday = (accountName) => {
+                return (dayData.value?.cashflow || []).reduce((sum, item) => {
+                    if (item.account === accountName) return item.type === 'in' ? sum - (parseFloat(item.amount) || 0) : sum + (parseFloat(item.amount) || 0);
+                    return sum;
+                }, 0);
+            };
+
+            const calculateCurrentAccountBalance = (accountName) => getBranchState(currentBranch.value, currentDate.value).accountsMap[accountName] || 0;
+            const totalNetAccounts = computed(() => deferredAccountsList.value.reduce((sum, acc) => sum + calculateCurrentAccountBalance(acc), 0));
+
+            // دوال الإيرادات والمصروفات
+            const getCategoryCashflow = (cat, dateStr) => {
+                const flows = currentBranchData.value.days[dateStr]?.cashflow || [];
+                let flowIn = 0, flowOut = 0;
+                flows.forEach(cf => {
+                    if(cf.account === cat) { if(cf.type === 'in') flowIn += parseFloat(cf.amount)||0; else flowOut += parseFloat(cf.amount)||0; }
+                });
+                return { flowIn, flowOut, net: flowIn - flowOut };
+            };
+            const getCategoryMonthlyTotal = (cat) => {
+                const b = currentBranchData.value; let total = 0; const monthPrefix = currentDate.value.substring(0, 7);
+                Object.keys(b.days).forEach(date => {
+                    if (date.startsWith(monthPrefix) && date <= currentDate.value) total += getCategoryCashflow(cat, date).net;
+                });
+                return total;
+            };
+
+            const getMonthlyEmpSims = (emp) => {
+                const b = currentBranchData.value; let total = 0; const monthPrefix = currentDate.value.substring(0, 7);
+                Object.keys(b.days).forEach(date => { if (date.startsWith(monthPrefix) && date <= currentDate.value) total += (parseFloat(b.days[date].employeeSims[emp]) || 0); });
+                return total;
+            };
+            const getMonthlyMachineSims = (col) => {
+                const b = currentBranchData.value; let total = 0; const monthPrefix = currentDate.value.substring(0, 7);
+                Object.keys(b.days).forEach(date => { if (date.startsWith(monthPrefix) && date <= currentDate.value) total += (parseFloat(b.days[date].machines[col]?.sims) || 0); });
+                return total;
+            };
+
+            const calculateBranchProfit = (branchName) => {
+                const state = getBranchState(branchName, currentDate.value);
+                const cap = branchCapital[branchName] || 0;
+                return state.box + state.machinesEnd + state.accountsNet - cap;
+            };
+
+            // دوال الإعدادات
+            const moveItem = (arr, index, direction) => {
+                if (index + direction < 0 || index + direction >= arr.length) return;
+                const temp = arr[index]; arr[index] = arr[index + direction]; arr[index + direction] = temp;
+                ensureDayDataSchema();
+            };
+
+            const addMachine = () => { if (newMachine.value.trim() && !columns.value.includes(newMachine.value.trim())) { currentBranchData.value.columns.push(newMachine.value.trim()); ensureDayDataSchema(); newMachine.value = ''; } };
+            const removeMachine = (name) => { if(confirm(`حذف الماكينة ${name}؟`)) currentBranchData.value.columns = columns.value.filter(c => c !== name); };
+            const addEmployee = () => { if (newEmployee.value.trim() && !employees.value.includes(newEmployee.value.trim())) { currentBranchData.value.employees.push(newEmployee.value.trim()); ensureDayDataSchema(); newEmployee.value = ''; } };
+            const removeEmployee = (name) => { if(confirm(`حذف الموظف ${name}؟`)) currentBranchData.value.employees = employees.value.filter(e => e !== name); };
+            const addAccount = () => { if (newAccount.value.trim() && !accounts.value.includes(newAccount.value.trim())) { currentBranchData.value.accounts.push(newAccount.value.trim()); ensureDayDataSchema(); newAccount.value = ''; } };
+            const removeAccount = (name) => { if(confirm(`حذف الحساب ${name}؟`)) currentBranchData.value.accounts = accounts.value.filter(a => a !== name); };
+            const addCategory = () => { if (newCategory.value.trim() && !categories.value.includes(newCategory.value.trim())) { currentBranchData.value.categories.push(newCategory.value.trim()); ensureDayDataSchema(); newCategory.value = ''; } };
+            const removeCategory = (name) => { if(confirm(`حذف البند ${name}؟`)) currentBranchData.value.categories = categories.value.filter(a => a !== name); };
+            const resetApp = () => { if(confirm('متأكد من مسح جميع البيانات؟ لا يمكن التراجع!')) { localStorage.removeItem('pos_erp_db_v6'); location.reload(); } };
+
+            // دفتر الأستاذ (Ledger Modal)
+            const showLedger = ref(false);
+            const ledgerType = ref(''); 
+            const ledgerTarget = ref('');
+            
+            const openLedger = (type, target) => {
+                ledgerType.value = type; ledgerTarget.value = target; showLedger.value = true;
+            };
+
+            const ledgerData = computed(() => {
+                if(!showLedger.value || !ledgerTarget.value) return [];
+                const b = currentBranchData.value;
+                const target = ledgerTarget.value;
+                const type = ledgerType.value;
+                const dates = Object.keys(b.days).sort();
+                let records = [];
+                let runBal = 0;
+
+                if(type === 'machine') {
+                    dates.forEach(d => {
+                        const m = b.days[d].machines[target];
+                        if(m && (m.buy || m.sell || m.end || m.sims)) {
+                            // حساب التكلفة لهذا اليوم المعين
+                            let prevEnd = parseFloat(b.openingBalances?.machines?.[target])||0;
+                            const dIdx = dates.indexOf(d);
+                            if(dIdx > 0) prevEnd = parseFloat(b.days[dates[dIdx-1]].machines[target]?.end)||0;
+                            let cost = prevEnd + (parseFloat(m.buy)||0) - (parseFloat(m.end)||0);
+                            records.push({ date: d, ...m, cost });
+                        }
+                    });
+                } else if (type === 'account' || type === 'employee') {
+                    runBal = parseFloat(b.openingBalances?.accounts?.[target]) || 0;
+                    if (runBal !== 0) records.push({ date: 'رصيد افتتاحي', isOpening: true, debit:0, credit:0, flowIn:0, flowOut:0, balance: runBal});
+                    
+                    dates.forEach(d => {
+                        let debit = parseFloat(b.days[d].accountsData?.[target]?.debit) || 0;
+                        let credit = parseFloat(b.days[d].accountsData?.[target]?.credit) || 0;
+                        let flowIn = 0, flowOut = 0;
+                        (b.days[d].cashflow || []).forEach(cf => {
+                            if(cf.account === target) { if(cf.type === 'in') flowIn += parseFloat(cf.amount)||0; else flowOut += parseFloat(cf.amount)||0; }
+                        });
+                        if(debit || credit || flowIn || flowOut) {
+                            runBal += credit - debit - flowIn + flowOut;
+                            records.push({ date: d, debit, credit, flowIn, flowOut, balance: runBal });
+                        }
+                    });
+                } else if (type === 'category') {
+                    dates.forEach(d => {
+                        let flowIn = 0, flowOut = 0;
+                        (b.days[d].cashflow || []).forEach(cf => {
+                            if(cf.account === target) { if(cf.type === 'in') flowIn += parseFloat(cf.amount)||0; else flowOut += parseFloat(cf.amount)||0; }
+                        });
+                        if(flowIn || flowOut) {
+                            runBal += flowIn - flowOut;
+                            records.push({ date: d, flowIn, flowOut, balance: runBal });
+                        }
+                    });
+                }
+                // ترتيب عكسي (الأحدث فوق)
+                return records.reverse();
+            });
+
+            onMounted(() => { const loader = document.getElementById('loading'); if(loader) loader.remove(); });
+
+            return {
+                branches, currentBranch, currentDate, dayData, columns, employees, accounts, categories, allAccountsList, deferredAccountsList,
+                showSettings, newMachine, newEmployee, newAccount, newCategory, currentBranchData,
+                totalBuyPayment, totalSellPayment, calculateCost, totalCost, netCashflow,
+                totalEndOfDay, totalNetAccounts, boxStartBalance, theoreticalBox, boxDifference,
+                getCategoryCashflow, getCategoryMonthlyTotal, getMonthlyEmpSims, getMonthlyMachineSims,
+                getAccountCashflowToday, calculateCurrentAccountBalance, calculateBranchProfit,
+                addMachine, removeMachine, addEmployee, removeEmployee, addAccount, removeAccount, addCategory, removeCategory,
+                moveItem, ensureDayDataSchema, resetApp,
+                showLedger, ledgerType, ledgerTarget, ledgerData, openLedger
+            };
+        }
+    }).mount('#app');
+} catch(e) { document.write('<div style="color:red; text-align:center; padding:50px; font-size:20px;">خطأ: ' + e.message + '</div>'); }
+</script>
+
+</body>
+</html>
