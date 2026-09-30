@@ -339,22 +339,13 @@ textarea { width:100%; padding:10px; border-radius:8px; border:1px solid var(--b
                         </div>
                     </div>
                     
-                    <\!-- الموظفين -->
+                    <\!-- الموظفين (مربوطين بالمسير) -->
                     <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
                         <h3 class="font-bold text-lg mb-3 text-indigo-800">الموظفين</h3>
-                        <div class="flex gap-2 mb-3">
-                            <input v-model="newEmployee" @keyup.enter="addEmployee" placeholder="اسم..." class="border p-2 rounded flex-1 outline-none text-sm">
-                            <button @click="addEmployee" class="bg-indigo-600 text-white px-3 rounded font-bold">+</button>
-                        </div>
-                        <div class="space-y-2 max-h-60 overflow-y-auto pr-1">
-                            <div v-for="(emp, idx) in employees" :key="'emp'+emp" class="flex justify-between items-center bg-white p-2 rounded border border-indigo-200 text-sm shadow-sm">
-                                <span class="font-bold text-gray-700">{{ emp }}</span>
-                                <div class="flex gap-1">
-                                    <button @click="moveItem(employees, idx, -1)" :disabled="idx===0" class="text-gray-400 hover:text-indigo-600 disabled:opacity-30"><i class="fas fa-chevron-up"></i></button>
-                                    <button @click="moveItem(employees, idx, 1)" :disabled="idx===employees.length-1" class="text-gray-400 hover:text-indigo-600 disabled:opacity-30"><i class="fas fa-chevron-down"></i></button>
-                                    <button @click="removeEmployee(emp)" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
-                                </div>
-                            </div>
+                        <p class="text-sm text-indigo-900 mb-3 leading-relaxed"><i class="fas fa-link ml-1"></i> الموظفين مربوطين تلقائياً بمسير الرواتب. لإضافة موظف أو حذفه أو تعديل اسمه استخدم شاشة الموظفين في المسير.</p>
+                        <div class="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
+                            <span v-for="emp in employees" :key="'empn'+emp" class="bg-white border border-indigo-200 rounded-full px-3 py-1 text-sm font-bold text-gray-700 shadow-sm">{{ emp }}</span>
+                            <span v-if="employees.length === 0" class="text-sm text-gray-500">لا يوجد موظفين في المسير بعد.</span>
                         </div>
                     </div>
 
@@ -761,6 +752,17 @@ try {
             let saved = null;
             try { saved = JSON.parse(localStorage.getItem('pos_erp_db_v6')); } catch(e) {}
             const db = ref(saved || defaultState);
+            const normN = (s) => String(s||'').replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ة/g,'ه').replace(/\s+/g,' ').trim().toLowerCase();
+            const syncEmployeesFromPayroll = () => {
+                let pr = [];
+                try { pr = (JSON.parse(localStorage.getItem('pr_employees')) || []).map(e => String(e.name||'').trim()).filter(Boolean); } catch(e) {}
+                branches.forEach(br => {
+                    const b = db.value[br]; if (!b) return;
+                    const old = b.employees || [];
+                    b.employees = pr.map(n => old.find(o => normN(o) === normN(n)) || n);
+                });
+            };
+            syncEmployeesFromPayroll();
 
             const currentBranchData = computed(() => db.value[currentBranch.value]);
             const columns = computed(() => currentBranchData.value.columns || []);
@@ -1213,7 +1215,10 @@ const DB = {
         const emp = this.employees.find(e => e.id === empId);
         if (!emp) return r;
         const s = SalesBridge.get(emp, month);
-        return Object.keys(s.linked).length ? Object.assign({}, r, s.values) : r;
+        if (!Object.keys(s.linked).length) return r;
+        const out = Object.assign({}, r);
+        Object.keys(s.values).forEach(k => { if (out[k] === undefined || out[k] === null || out[k] === '') out[k] = s.values[k]; });
+        return out;
     },
     getRawRecord(empId, month) {
         let r = this.records.find(x => x.empId === empId && x.month === month);
@@ -1299,7 +1304,7 @@ const Sales = {
     src() { return document.getElementById('salesSrc').textContent.replace(/<\\\/script/g, '</script').replace(/<\\!--/g, '<!--'); },
     open() {
         const f = document.getElementById('salesFrame');
-        if (!f.dataset.ready) { f.srcdoc = this.src(); f.dataset.ready = '1'; }
+        f.srcdoc = this.src(); // reload so payroll employees are re-synced every time
         document.getElementById('salesView').classList.add('open');
         document.body.style.overflow = 'hidden';
     },
@@ -1397,7 +1402,7 @@ const Payroll = {
                     const inputType = f.isTime ? 'text' : 'number';
                     const lk = SalesBridge.get(e, month).linked[f.key];
                     const extraAttrs = f.isTime ? ' inputmode="numeric" placeholder="0:00" data-type="time"' : '';
-                    html += `<td class="sheet-cell cell-${f.cls}${lk ? ' linked' : ''}"><input type="${inputType}" class="sheet-input" value="${dispVal}" data-emp="${e.id}" data-field="${f.key}" data-col="${ci}"${extraAttrs} ${(!Employees.tracks(e) && (f.key === 'absentDays' || f.key === 'delayHours')) ? ' disabled title="لا يُحسب له حضور وانصراف"' : (lk ? ' disabled title="مربوط تلقائياً بمبيعات الشرايح"' : '')} onchange="Payroll.update(this)" onkeydown="Payroll.nav(event,this)"></td>`;
+                    html += `<td class="sheet-cell cell-${f.cls}${lk ? ' linked' : ''}"><input type="${inputType}" class="sheet-input" value="${dispVal}" data-emp="${e.id}" data-field="${f.key}" data-col="${ci}"${extraAttrs} ${(!Employees.tracks(e) && (f.key === 'absentDays' || f.key === 'delayHours')) ? ' disabled title="لا يُحسب له حضور وانصراف"' : (lk ? ' title="معبأ تلقائياً من مبيعات الشرايح، ويمكنك تعديله يدوياً"' : '')} onchange="Payroll.update(this)" onkeydown="Payroll.nav(event,this)"></td>`;
                 });
                 html += '</tr>';
             });
