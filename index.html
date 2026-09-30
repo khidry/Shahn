@@ -1216,8 +1216,9 @@ const DB = {
         if (!emp) return r;
         const s = SalesBridge.get(emp, month);
         if (!Object.keys(s.linked).length) return r;
+        const manual = r._manual || {};
         const out = Object.assign({}, r);
-        Object.keys(s.values).forEach(k => { if (out[k] === undefined || out[k] === null || out[k] === '') out[k] = s.values[k]; });
+        Object.keys(s.values).forEach(k => { if (!manual[k]) out[k] = s.values[k]; });
         return out;
     },
     getRawRecord(empId, month) {
@@ -1228,8 +1229,8 @@ const DB = {
     updateField(empId, month, field, value) {
         let idx = this.records.findIndex(x => x.empId === empId && x.month === month);
         let val = parseFloat(value) || 0;
-        if (idx > -1) { this.records[idx][field] = val; }
-        else { let r = this.getRawRecord(empId, month); r[field] = val; this.records.push(r); }
+        if (idx > -1) { this.records[idx][field] = val; if (['simPhones','simHuawei','shippingCredit'].includes(field)) { this.records[idx]._manual = this.records[idx]._manual || {}; this.records[idx]._manual[field] = true; } }
+        else { let r = this.getRawRecord(empId, month); r[field] = val; if (['simPhones','simHuawei','shippingCredit'].includes(field)) { r._manual = r._manual || {}; r._manual[field] = true; } this.records.push(r); }
         this.saveRecords();
     },
     defaultDayAttendance(emp) {
