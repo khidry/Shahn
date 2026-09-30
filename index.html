@@ -303,9 +303,59 @@ textarea { width:100%; padding:10px; border-radius:8px; border:1px solid var(--b
                 <label class="font-bold text-gray-700 whitespace-nowrap"><i class="far fa-calendar-alt ml-1"></i> اليومية:</label>
                 <input type="date" v-model="currentDate" class="bg-transparent font-bold text-blue-700 outline-none cursor-pointer w-full text-center">
             </div>
+            <button @click="showOpening = !showOpening" class="bg-yellow-600 hover:bg-yellow-700 text-white p-3 rounded-lg shadow transition-colors" title="سند قيد أول المدة">
+                <i class="fas fa-file-invoice text-xl"></i>
+            </button>
             <button @click="showSettings = true" class="bg-slate-700 hover:bg-slate-800 text-white p-3 rounded-lg shadow transition-colors">
                 <i class="fas fa-cog text-xl"></i>
             </button>
+        </div>
+    </div>
+
+    <\!-- بطاقة سند قيد أول المدة -->
+    <div v-if="showOpening" class="fixed inset-0 z-50 flex items-center justify-center modal-overlay p-4" @click.self="showOpening = false">
+        <div class="bg-white w-full max-w-5xl max-h-[90vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div class="bg-yellow-700 text-white p-4 flex justify-between items-center">
+                <h2 class="text-xl font-bold"><i class="fas fa-file-invoice ml-2"></i> سند قيد أول المدة - فرع {{ currentBranch }}</h2>
+                <button @click="showOpening = false" class="text-gray-200 hover:text-white text-3xl leading-none">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-4 flex-1">
+                <div v-if="isOpeningLocked" class="bg-red-50 border border-red-200 text-red-800 p-3 rounded-lg flex justify-between items-center font-bold">
+                    <span><i class="fas fa-lock ml-1"></i> السند مقفل بعد التسجيل، لا يمكن التعديل إلا بالرقم السري.</span>
+                    <button @click="unlockOpening" class="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm hover:bg-red-700">فتح للتعديل</button>
+                </div>
+                <div class="bg-yellow-50 p-5 rounded-xl border border-yellow-200">
+                    <h3 class="font-bold text-xl mb-4 text-yellow-800 border-b border-yellow-200 pb-2">سند قيد أول المدة</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block font-bold text-gray-700 mb-2">الصندوق الافتتاحي</label>
+                            <input type="number" v-model.number="currentBranchData.openingBalances.box" :disabled="isOpeningLocked" class="w-full border-2 border-yellow-400 p-2 rounded font-bold text-lg outline-none text-center" dir="ltr">
+                        </div>
+                        <div class="col-span-1 lg:col-span-2">
+                            <label class="block font-bold text-gray-700 mb-2">أرصدة الماكينات الافتتاحية</label>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                                <div v-for="col in columns" :key="'ob-m-'+col" class="flex items-center bg-white border rounded shadow-sm">
+                                    <span class="bg-gray-100 px-2 py-1 text-xs font-bold w-20 text-center border-l truncate">{{ col }}</span>
+                                    <input type="number" v-model.number="currentBranchData.openingBalances.machines[col]" :disabled="isOpeningLocked" class="w-full p-1 text-center outline-none font-bold text-blue-700">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-span-1 md:col-span-2 lg:col-span-3 mt-2">
+                            <label class="block font-bold text-gray-700 mb-2">أرصدة الحسابات الافتتاحية (الآجل فقط)</label>
+                            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                <div v-for="acc in [...employees, ...accounts]" :key="'ob-a-'+acc" class="bg-white border rounded p-2 flex flex-col gap-1 shadow-sm">
+                                    <span class="text-xs font-bold text-gray-600 truncate">{{ acc }}</span>
+                                    <input type="number" v-model.number="currentBranchData.openingBalances.accounts[acc]" dir="ltr" :disabled="isOpeningLocked" class="w-full p-1 text-center border-b outline-none font-bold bg-gray-50">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-100 p-4 border-t flex justify-between items-center">
+                <button v-if="!isOpeningLocked" @click="lockOpening" class="bg-green-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg hover:bg-green-700 transition"><i class="fas fa-lock ml-1"></i> حفظ وقفل السند</button>
+                <button v-else @click="showOpening = false" class="bg-slate-600 text-white px-8 py-2 rounded-lg font-bold shadow-lg hover:bg-slate-700 transition">إغلاق</button>
+            </div>
         </div>
     </div>
 
@@ -387,36 +437,6 @@ textarea { width:100%; padding:10px; border-radius:8px; border:1px solid var(--b
                         </div>
                     </div>
                 </div>
-
-                <\!-- قيد أول المدة -->
-                <div class="bg-yellow-50 p-5 rounded-xl border border-yellow-200">
-                    <h3 class="font-bold text-xl mb-4 text-yellow-800 border-b border-yellow-200 pb-2">سند قيد أول المدة</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <div>
-                            <label class="block font-bold text-gray-700 mb-2">الصندوق الافتتاحي</label>
-                            <input type="number" v-model.number="currentBranchData.openingBalances.box" class="w-full border-2 border-yellow-400 p-2 rounded font-bold text-lg outline-none text-center" dir="ltr">
-                        </div>
-                        <div class="col-span-1 lg:col-span-2">
-                            <label class="block font-bold text-gray-700 mb-2">أرصدة الماكينات الافتتاحية</label>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                                <div v-for="col in columns" :key="'ob-m-'+col" class="flex items-center bg-white border rounded shadow-sm">
-                                    <span class="bg-gray-100 px-2 py-1 text-xs font-bold w-20 text-center border-l truncate">{{ col }}</span>
-                                    <input type="number" v-model.number="currentBranchData.openingBalances.machines[col]" class="w-full p-1 text-center outline-none font-bold text-blue-700">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-span-1 md:col-span-2 lg:col-span-3 mt-2">
-                            <label class="block font-bold text-gray-700 mb-2">أرصدة الحسابات الافتتاحية (الآجل فقط)</label>
-                            <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                <div v-for="acc in [...employees, ...accounts]" :key="'ob-a-'+acc" class="bg-white border rounded p-2 flex flex-col gap-1 shadow-sm">
-                                    <span class="text-xs font-bold text-gray-600 truncate">{{ acc }}</span>
-                                    <input type="number" v-model.number="currentBranchData.openingBalances.accounts[acc]" dir="ltr" class="w-full p-1 text-center border-b outline-none font-bold bg-gray-50">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
             </div>
             <div class="bg-gray-100 p-4 border-t flex justify-between items-center">
                 <button @click="resetApp" class="text-red-600 font-bold text-sm hover:underline"><i class="fas fa-exclamation-triangle"></i> مسح كامل للنظام</button>
@@ -725,8 +745,17 @@ try {
             const branches = ['هواتف', 'هواوي'];
             const currentBranch = ref('هواتف');
             const showSettings = ref(false);
+            const showOpening = ref(false);
             const branchCapital = { 'هواتف': 35000, 'هواوي': 15000 };
 
+            const isOpeningLocked = computed(() => !!(currentBranchData.value.openingBalances && currentBranchData.value.openingBalances.locked));
+            const lockOpening = () => { currentBranchData.value.openingBalances.locked = true; };
+            const unlockOpening = () => {
+                const pass = prompt('أدخل الرقم السري لفتح التعديل على سند قيد أول المدة:');
+                if (pass === null) return;
+                if (pass === '0000') currentBranchData.value.openingBalances.locked = false;
+                else alert('رقم سري خاطئ');
+            };
             const newMachine = ref('');
             const newEmployee = ref('');
             const newAccount = ref('');
@@ -1005,7 +1034,7 @@ try {
 
             return {
                 branches, currentBranch, currentDate, dayData, columns, employees, accounts, categories, allAccountsList, deferredAccountsList,
-                showSettings, newMachine, newEmployee, newAccount, newCategory, currentBranchData,
+                showSettings, showOpening, isOpeningLocked, lockOpening, unlockOpening, newMachine, newEmployee, newAccount, newCategory, currentBranchData,
                 totalBuyPayment, totalSellPayment, calculateCost, totalCost, netCashflow,
                 totalEndOfDay, totalNetAccounts, boxStartBalance, theoreticalBox, boxDifference,
                 getCategoryCashflow, getCategoryMonthlyTotal, getMonthlyEmpSims, getMonthlyMachineSims,
@@ -2342,7 +2371,7 @@ const Settings = {
         DB.saveSettings();
     },
     backup() {
-        const blob = new Blob([JSON.stringify({ employees: DB.employees, records: DB.records, attendance: DB.attendance, settings: DB.settings, waMap: LS.get('pr_wa_map', {}) })], { type:'application/json' });
+        const blob = new Blob([JSON.stringify({ employees: DB.employees, records: DB.records, attendance: DB.attendance, settings: DB.settings, waMap: LS.get('pr_wa_map', {}), salesDB: JSON.parse(localStorage.getItem(SalesBridge.KEY) || 'null') })], { type:'application/json' });
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = `نسخة_احتياطية_${new Date().toISOString().slice(0,10)}.json`;
@@ -2382,7 +2411,7 @@ const Sync = {
     device() { const m = this.meta(); if (!m.device) { m.device = Math.random().toString(36).slice(2, 8); this.saveMeta(m); } return m.device; },
     label() { return ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || 'جهاز') + '·' + this.device(); },
     fmt(ms) { if (!ms) return '—'; const d = new Date(ms), p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; },
-    payload() { return { employees:DB.employees, records:DB.records, attendance:DB.attendance, settings:DB.settings, waMap:LS.get('pr_wa_map', {}) }; },
+    payload() { return { employees:DB.employees, records:DB.records, attendance:DB.attendance, settings:DB.settings, waMap:LS.get('pr_wa_map', {}), salesDB: JSON.parse(localStorage.getItem(SalesBridge.KEY) || 'null') }; },
     // used only to detect REAL changes: default-generated attendance months and all-zero records are ignored
     serialize() {
         const p = this.payload();
@@ -2453,6 +2482,7 @@ const Sync = {
             if (d.attendance) { DB.attendance = d.attendance; DB.saveAttendance(); }
             if (d.waMap) LS.set('pr_wa_map', d.waMap);
             if (d.settings) { DB.settings = d.settings; if (!DB.settings.commRates) DB.settings.commRates = { tabby:20, tamara:20, mora:100, simRate:5 }; DB.saveSettings(); }
+            if (d.salesDB) { localStorage.setItem(SalesBridge.KEY, JSON.stringify(d.salesDB)); SalesBridge.invalidate(); }
         } finally { this.applying = false; }
         if (silent) this.lastSer = this.serialize();
         if (DB.settings.theme) document.documentElement.setAttribute('data-theme', DB.settings.theme);
